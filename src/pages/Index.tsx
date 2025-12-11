@@ -5,6 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
 
@@ -31,6 +34,9 @@ const Index = () => {
   ]);
 
   const [history, setHistory] = useState<DailyRecord[]>([]);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
 
   useEffect(() => {
     const savedChecklist = localStorage.getItem('checklist');
@@ -244,6 +250,196 @@ const Index = () => {
     toast.success('PDF успешно создан!', {
       description: 'История чек-листа сохранена в файл',
     });
+  };
+
+  const generatePDFBase64 = () => {
+    if (history.length === 0) {
+      return null;
+    }
+
+    const doc = new jsPDF();
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('История выполнения чек-листа', 20, 20);
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Памятка для родственников пациента с гипотиреозом', 20, 30);
+    
+    doc.setDrawColor(14, 165, 233);
+    doc.setLineWidth(0.5);
+    doc.line(20, 35, 190, 35);
+    
+    let yPosition = 45;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Статистика выполнения:', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    
+    history.forEach((record, index) => {
+      const percentage = Math.round((record.completed / record.total) * 100);
+      const text = `${record.date}: ${record.completed}/${record.total} (${percentage}%)`;
+      
+      if (percentage === 100) {
+        doc.setTextColor(34, 197, 94);
+        doc.text('✓', 20, yPosition);
+      } else {
+        doc.setTextColor(14, 165, 233);
+        doc.text('○', 20, yPosition);
+      }
+      
+      doc.setTextColor(0, 0, 0);
+      doc.text(text, 28, yPosition);
+      
+      const barWidth = 100;
+      const barHeight = 5;
+      const barX = 110;
+      const barY = yPosition - 3;
+      
+      doc.setFillColor(230, 230, 230);
+      doc.rect(barX, barY, barWidth, barHeight, 'F');
+      
+      const filledWidth = (barWidth * percentage) / 100;
+      if (percentage === 100) {
+        doc.setFillColor(34, 197, 94);
+      } else {
+        doc.setFillColor(14, 165, 233);
+      }
+      doc.rect(barX, barY, filledWidth, barHeight, 'F');
+      
+      yPosition += 12;
+      
+      if (yPosition > 270 && index < history.length - 1) {
+        doc.addPage();
+        yPosition = 20;
+      }
+    });
+    
+    yPosition += 10;
+    doc.setDrawColor(14, 165, 233);
+    doc.line(20, yPosition, 190, yPosition);
+    yPosition += 10;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Пункты чек-листа:', 20, yPosition);
+    yPosition += 8;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    
+    checklist.forEach((item, index) => {
+      const itemText = `${index + 1}. ${item.label}`;
+      const lines = doc.splitTextToSize(itemText, 170);
+      
+      if (yPosition + (lines.length * 6) > 280) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      lines.forEach((line: string) => {
+        doc.text(line, 20, yPosition);
+        yPosition += 6;
+      });
+      
+      yPosition += 2;
+    });
+    
+    if (yPosition > 250) {
+      doc.addPage();
+      yPosition = 20;
+    } else {
+      yPosition += 15;
+    }
+    
+    doc.setFillColor(211, 228, 253);
+    doc.roundedRect(20, yPosition, 170, 30, 3, 3, 'F');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(14, 165, 233);
+    doc.text('💡 Важно помнить', 25, yPosition + 8);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    const reminderText = 'Ваша поддержка — 50% успеха в лечении! Пациенты, чьи близкие активно участвуют';
+    const reminderText2 = 'в процессе лечения, быстрее восстанавливаются и лучше соблюдают рекомендации';
+    const reminderText3 = 'врачей.';
+    doc.text(reminderText, 25, yPosition + 15);
+    doc.text(reminderText2, 25, yPosition + 20);
+    doc.text(reminderText3, 25, yPosition + 25);
+    
+    doc.setFontSize(8);
+    doc.setTextColor(128, 128, 128);
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.text(
+        `Создано: ${new Date().toLocaleDateString('ru-RU')} | Страница ${i} из ${pageCount}`,
+        20,
+        285
+      );
+    }
+    
+    const pdfOutput = doc.output('datauristring');
+    const base64 = pdfOutput.split(',')[1];
+    return base64;
+  };
+
+  const sendPDFByEmail = async () => {
+    if (!emailAddress || !emailAddress.includes('@')) {
+      toast.error('Некорректный email адрес');
+      return;
+    }
+
+    setIsEmailSending(true);
+
+    try {
+      const pdfBase64 = generatePDFBase64();
+      
+      if (!pdfBase64) {
+        toast.error('Нет данных для отправки');
+        setIsEmailSending(false);
+        return;
+      }
+
+      const response = await fetch('https://functions.poehali.dev/bccd7bdc-6d69-428b-adcf-cac0745e5e7c', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: emailAddress,
+          pdfBase64: pdfBase64,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success('Email успешно отправлен!', {
+          description: `PDF отправлен на ${emailAddress}`,
+        });
+        setEmailDialogOpen(false);
+        setEmailAddress('');
+      } else {
+        toast.error('Ошибка отправки', {
+          description: data.error || 'Попробуйте позже',
+        });
+      }
+    } catch (error) {
+      toast.error('Ошибка отправки', {
+        description: 'Проверьте подключение к интернету',
+      });
+    } finally {
+      setIsEmailSending(false);
+    }
   };
 
   return (
@@ -566,15 +762,72 @@ const Index = () => {
           {history.length > 0 && (
             <Card className="border-blue-100">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-3">
                   <CardTitle className="text-2xl flex items-center gap-2">
                     <Icon name="BarChart3" className="text-primary" size={28} />
                     История за последние 7 дней
                   </CardTitle>
-                  <Button onClick={exportToPDF} variant="outline" size="sm">
-                    <Icon name="Download" className="mr-2" size={18} />
-                    Экспорт в PDF
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button onClick={exportToPDF} variant="outline" size="sm">
+                      <Icon name="Download" className="mr-2" size={18} />
+                      Скачать PDF
+                    </Button>
+                    <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="default" size="sm">
+                          <Icon name="Mail" className="mr-2" size={18} />
+                          Отправить на email
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Отправить PDF на email</DialogTitle>
+                          <DialogDescription>
+                            Введите email адрес для получения истории чек-листа
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid gap-2">
+                            <Label htmlFor="email">Email адрес</Label>
+                            <Input
+                              id="email"
+                              type="email"
+                              placeholder="example@email.com"
+                              value={emailAddress}
+                              onChange={(e) => setEmailAddress(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !isEmailSending) {
+                                  sendPDFByEmail();
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            variant="outline"
+                            onClick={() => setEmailDialogOpen(false)}
+                            disabled={isEmailSending}
+                          >
+                            Отмена
+                          </Button>
+                          <Button onClick={sendPDFByEmail} disabled={isEmailSending}>
+                            {isEmailSending ? (
+                              <>
+                                <Icon name="Loader2" className="mr-2 animate-spin" size={18} />
+                                Отправка...
+                              </>
+                            ) : (
+                              <>
+                                <Icon name="Send" className="mr-2" size={18} />
+                                Отправить
+                              </>
+                            )}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>

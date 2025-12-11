@@ -1,0 +1,36 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS request for CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "POST without email should fail",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "pdfBase64": "JVBERi0xLjQK"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "Некорректный email адрес"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST without PDF should fail",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "email": "test@example.com"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "PDF файл не предоставлен"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
